@@ -19,6 +19,7 @@ install -o root -g 0 -m 755 bluetooth_le_scanner.sh /usr/bin/
 install -o root -g 0 -m 600 bluetooth_le_scanner.conf.sample /etc/bluetooth_le_scanner.conf
 # edit /etc/bluetooth_le_scanner.conf
 install -o root -g 0 -m 644 systemd/bluetooth_le_scanner.service /etc/systemd/system/
+mkdir -p /var/db/bluetooth_le_scanner
 systemctl enable bluetooth_le_scanner
 service bluetooth_le_scanner start
 ```
