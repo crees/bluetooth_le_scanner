@@ -1,0 +1,13 @@
+[Unit]
+Description=Bluetooth LE scanner
+After=network.target
+
+[Service]
+User=root
+ExecStart=/bin/sh /usr/sbin/bluetooth_le_scanner.sh -c /etc/bluetooth_le_scanner.conf &
+WorkingDirectory=/var/db/bluetooth_le_scanner
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target network.target

@@ -1,0 +1,19 @@
+# Configuration file for bluetooth_le_scanner
+
+# Where the scanner's persistent data are stored
+dbdir=/var/db/bluetooth_le_scanner
+
+# mqtt details
+mqtt_host=localhost
+mqtt_port=1883
+mqtt_user=mqtt_user
+mqtt_password=mqtt_passwd
+mqtt_topic=btlescan/$(hostname)
+
+# This is a list of MAC addresses to scan for
+# These are also guaranteed to be updated (e.g. on a restart)
+# Instead of reporting by MAC address, they are reported as their nickname
+nicknames="
+AA:AA:AA:AA:AA:AA=sample_beacon
+BB:BB:BB:BB:BB:BB=other_sample_beacon
+"
