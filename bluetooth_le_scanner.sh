@@ -3,7 +3,7 @@
 err()
 {
 	echo ${1+"$@"} 1>&2
-	kill -USR1 $PROC
+	kill -USR1 0
 }
 
 check_deps()
@@ -21,7 +21,22 @@ check_deps()
 
 scan_hcitool()
 {
-	timeout -s SIGINT 30s hcitool lescan || err "hcitool failed"
+	_tries=${1-0}
+
+	# HCITool appears to return 124 after SIGINT, so anything
+	# other than that is an error
+	timeout -s SIGINT 30s hcitool lescan
+
+	if [ "$?" -ne "124" ]; then
+		if [ "$_tries" -gt 3 ]; then
+			err "hcitool keeps failing, this is no good"
+		fi
+		echo "hcitool failed, let's try downup" 1>&2
+		hciconfig hci0 down
+		sleep 10
+		hciconfig hci0 up
+		scan_hcitool $(expr $_tries + 1)
+	fi
 }
 
 scan()
@@ -69,8 +84,6 @@ publish()
 }
 EOF
 }
-
-PROC=$$
 
 trap 'exit 2' USR1
 
