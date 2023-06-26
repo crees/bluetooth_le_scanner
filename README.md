@@ -15,7 +15,7 @@ far too sophisticated for my needs, but it gave me several clues.
 ```bash
 git clone https://github.com/crees/bluetooth_le_scanner/
 cd bluetooth_le_scanner
-install -o root -g 0 -m 755 bluetooth_le_scanner.sh /usr/bin/
+install -o root -g 0 -m 755 bluetooth_le_scanner.sh /usr/sbin/
 install -o root -g 0 -m 600 bluetooth_le_scanner.conf.sample /etc/bluetooth_le_scanner.conf
 # edit /etc/bluetooth_le_scanner.conf
 install -o root -g 0 -m 644 systemd/bluetooth_le_scanner.service /etc/systemd/system/
