@@ -25,7 +25,7 @@ scan_hcitool()
 
 	# HCITool appears to return 124 after SIGINT, so anything
 	# other than that is an error
-	timeout -s SIGINT 30s hcitool lescan
+	timeout -k 10 -s SIGINT 30s hcitool lescan
 
 	if [ "$?" -ne "124" ]; then
 		if [ "$_tries" -gt 3 ]; then
