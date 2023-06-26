@@ -23,3 +23,21 @@ mkdir -p /var/db/bluetooth_le_scanner
 systemctl enable bluetooth_le_scanner
 service bluetooth_le_scanner start
 ```
+
+# Adding to Home Asssistant
+
+Once you have MQTT configured, it's very straightforward to subscribe
+to presence detection.  Add to your configuration.yaml:
+
+```yaml
+mqtt:
+  sensor:
+    - name: 'Airtag 1'
+      unique_id: mqtt_myraspberry_sensor_airtag_one
+      state_topic: 'btlescan/myraspberry/airtag_one'
+      value_template: '{{ value_json.present }}'
+    - name: 'Chris Keys Areion'
+      unique_id: mqtt_myraspberry_sensor_airtag_two
+      state_topic: 'btlescan/myraspberry/airtag_two'
+      value_template: '{{ value_json.present }}'
+```
