@@ -2,8 +2,8 @@
 
 err()
 {
-	echo ${1+"$@"}
-	exit 2
+	echo ${1+"$@"} 1>&2
+	kill -USR1 $PROC
 }
 
 check_deps()
@@ -69,6 +69,10 @@ publish()
 }
 EOF
 }
+
+PROC=$$
+
+trap 'exit 2' USR1
 
 check_deps mosquitto_pub hcitool
 
