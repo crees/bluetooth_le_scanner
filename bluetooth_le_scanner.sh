@@ -115,7 +115,10 @@ if [ -f "$dbdir/previous" ]; then
 	# We need to definitely report on nicknamed ones, so
 	# pretend they were available before
 	for nick in $nicknames; do
-		echo "${nick%=*} Unknown" >> "$dbdir/previous"
+		mac=${nick%=*}
+		if ! grep -q "^$mac" "$dbdir/previous"; then
+			echo "$mac Unknown" >> "$dbdir/previous"
+		fi
 	done
 	sort -u "$dbdir/previous" > "$dbdir/current"
 else
