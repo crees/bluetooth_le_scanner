@@ -6,17 +6,20 @@ err()
 	kill -USR1 0
 }
 
+cleanup()
+{
+	rm -f "$dbdir"/*_output
+	exit ${1-0}
+}
+
 check_deps()
 {
-	_missingTools=""
 
 	for tool in "$@"; do
-		type $tool > /dev/null || _missingTools="$_missingTools $tool"
+		type $tool > /dev/null && return 0
 	done
 
-	if [ -n "$_missingTools" ]; then
-		err "Missing dependencies: $_missingTools"
-	fi
+	err "Missing dependencies; one of : $*"
 }
 
 scan_hcitool()
@@ -25,7 +28,7 @@ scan_hcitool()
 
 	# HCITool appears to return 124 after SIGINT, so anything
 	# other than that is an error
-	timeout -k 10 -s SIGINT 30s hcitool lescan
+	timeout -k 10 -s SIGINT 30s hcitool lescan > "$dbdir/hcitool_output"
 
 	if [ "$?" -ne "124" ]; then
 		if [ "$_tries" -gt 3 ]; then
@@ -36,17 +39,34 @@ scan_hcitool()
 		sleep 10
 		hciconfig hci0 up
 		scan_hcitool $(expr $_tries + 1)
+	else
+		sed -nE 's,^([0-9A-F][0-9A-F]:\S+)\s.*,\1,p' "$dbdir/hcitool_output"
+		rm "$dbdir/hcitool_output"
 	fi
+}
+
+scan_bluetoothctl()
+{
+	timeout -k 10 -s INT 30 bluetoothctl scan on > "$dbdir/btctl_output"
+	if [ "$?" -ne 124 ]; then
+		err "Bluetoothctl failed"
+	fi
+	sed -nE '\,Device,s,[^:]+([0-9A-F][0-9A-F]:\S+)\s.*,\1,p' "$dbdir/btctl_output"
+	rm "$dbdir/btctl_output"
 }
 
 scan()
 {
-	# Later we can probably autodetect different tools for
-	# non-BlueZ environments
-	# All we need is to output a list of BT MAC addresses, line separated with
-	# a label afterwards, e.g. a name like this:
-	# 00:00:00:00:00:00 (Unknown)
-	scan_hcitool
+	# All we need is to output a list of BT MAC addresses, line separated
+	# 00:00:00:00:00:00
+	if type bluetoothctl >/dev/null; then
+		scan_bluetoothctl
+	elif type hcitool >/dev/null; then
+		scan_hcitool
+	else
+		# Should never be reached
+		err "This is a problem-- dependency code clearly faulty"
+	fi
 }
 
 get_nickname()
@@ -65,7 +85,6 @@ publish()
 {
 	_present=$1
 	_mac=$2
-	_name="$3"
 	_nick=$(get_nickname $_mac)
 
 	mosquitto_pub \
@@ -78,16 +97,17 @@ publish()
 {
 	"present": "$_present",
 	"mac": "$_mac",
-	"name":	"$_name",
 	"timestamp": "$(date +%s)",
 	"last": "$(date '+%X %x')"
 }
 EOF
 }
 
-trap 'exit 2' USR1
+trap 'cleanup 2' USR1
+trap 'cleanup' INT TERM
 
-check_deps mosquitto_pub hcitool
+check_deps mosquitto_pub
+check_deps bluetoothctl hcitool
 
 while getopts c: opt; do
 	case $opt in
@@ -117,7 +137,7 @@ if [ -f "$dbdir/previous" ]; then
 	for nick in $nicknames; do
 		mac=${nick%=*}
 		if ! grep -q "^$mac" "$dbdir/previous"; then
-			echo "$mac Unknown" >> "$dbdir/previous"
+			echo "$mac" >> "$dbdir/previous"
 		fi
 	done
 	sort -u "$dbdir/previous" > "$dbdir/current"
@@ -127,8 +147,7 @@ fi
 
 while :; do
 	mv "$dbdir/current" "$dbdir/previous"
-	scan | grep '^[0-9A-Fa-f][0-9A-Fa-f]:' | \
-		sort -u > "$dbdir/current"
+	scan | sort -u > "$dbdir/current"
 	# These have either just been scanned or are still here
 	comm -2 "$dbdir/current" "$dbdir/previous" | \
 			sort -r | while read mac name; do
