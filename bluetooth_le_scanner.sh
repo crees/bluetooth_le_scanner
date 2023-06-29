@@ -28,7 +28,7 @@ scan_hcitool()
 
 	# HCITool appears to return 124 after SIGINT, so anything
 	# other than that is an error
-	timeout -k 10 -s SIGINT 30s hcitool lescan > "$dbdir/hcitool_output"
+	timeout -k 10 -s SIGINT $bluetooth_scan_duration hcitool lescan > "$dbdir/hcitool_output"
 
 	if [ "$?" -ne "124" ]; then
 		if [ "$_tries" -gt 3 ]; then
@@ -47,7 +47,7 @@ scan_hcitool()
 
 scan_bluetoothctl()
 {
-	timeout -k 10 -s INT 30 bluetoothctl scan on > "$dbdir/btctl_output"
+	timeout -k 10 -s INT $bluetooth_scan_duration bluetoothctl scan on > "$dbdir/btctl_output"
 	if [ "$?" -ne 124 ]; then
 		err "Bluetoothctl failed"
 	fi

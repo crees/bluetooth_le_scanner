@@ -3,6 +3,12 @@
 # Where the scanner's persistent data are stored
 dbdir=/var/db/bluetooth_le_scanner
 
+# Duration of Bluetooth scanning in seconds.
+# Longer scans improve detection reliability obviously, but
+# shorter scans mean that the reports are more regular.
+# I wouldn't recommend anything less than 10s
+bluetooth_scan_duration=15
+
 # mqtt details
 mqtt_host=localhost
 mqtt_port=1883
