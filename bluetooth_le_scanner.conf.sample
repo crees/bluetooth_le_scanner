@@ -9,6 +9,12 @@ dbdir=/var/db/bluetooth_le_scanner
 # I wouldn't recommend anything less than 10s
 bluetooth_scan_duration=15
 
+# Validity period of device detection in seconds.
+# With short durations devices are often missed, so
+# only report devices missing if they haven't been
+# detected in this long.
+bluetooth_expiry_time=60
+
 # mqtt details
 mqtt_host=localhost
 mqtt_port=1883

@@ -85,20 +85,22 @@ publish()
 {
 	_present=$1
 	_mac=$2
-	_nick=$(get_nickname $_mac)
+	_timestamp=$3
+	_hr_date=$4
+	_nick="$(get_nickname $_mac)"
 
 	mosquitto_pub \
-		-h $mqtt_host \
-		-p $mqtt_port \
-		-u $mqtt_user \
-		-P $mqtt_password \
+		-h "$mqtt_host" \
+		-p "$mqtt_port" \
+		-u "$mqtt_user" \
+		-P "$mqtt_password" \
 		-t "$mqtt_topic/$_nick" \
 		-s <<EOF
 {
 	"present": "$_present",
 	"mac": "$_mac",
-	"timestamp": "$(date +%s)",
-	"last": "$(date '+%X %x')"
+	"timestamp": "$_timestamp",
+	"last": "$_hr_date"
 }
 EOF
 }
@@ -130,32 +132,31 @@ if ! [ -r "$dbdir" -a -d "$dbdir" ]; then
 	err "$dbdir does not exist, is not readable or is not a directory"
 fi
 
-if [ -f "$dbdir/previous" ]; then
-	cat "$dbdir/current" >> "$dbdir/previous"
-	# We need to definitely report on nicknamed ones, so
-	# pretend they were available before
-	for nick in $nicknames; do
-		mac=${nick%=*}
-		if ! grep -q "^$mac" "$dbdir/previous"; then
-			echo "$mac" >> "$dbdir/previous"
-		fi
-	done
-	sort -u "$dbdir/previous" > "$dbdir/current"
-else
-	touch "$dbdir/current"
-fi
+mkdir -p "$dbdir/addrs"
+
+# We need to definitely report on nicknamed ones, so
+# pretend they were available before
+for nick in $nicknames; do
+	mac=${nick%=*}
+	printf %s 0 > "$dbdir/addrs/$mac"
+done
+
+cd "$dbdir/addrs"
 
 while :; do
-	mv "$dbdir/current" "$dbdir/previous"
-	scan | sort -u > "$dbdir/current"
-	# These have either just been scanned or are still here
-	comm -2 "$dbdir/current" "$dbdir/previous" | \
-			sort -r | while read mac name; do
-		publish 1 $mac "$name"
+	timestamp_now=$(date +%s)
+	scan | sort -u | while read mac _junk; do
+		printf %s "$(date +%s)" > "$mac"
 	done
-	# These have disappeared
-	comm -13 "$dbdir/current" "$dbdir/previous" | \
-			sort -r | while read mac name; do
-		publish 0 $mac "$name"
+	for mac in *; do
+		[ "$mac" = "*" ] && break
+		<$mac read ts
+		hr_date=$(date -d @$ts 2>/dev/null || date -r $ts)
+		if [ "$(expr $timestamp_now - $ts)" -lt "$bluetooth_expiry_time" ]; then
+			publish 1 $mac $ts "$hr_date"
+		else
+			publish 0 $mac $ts "$hr_date"
+			rm $mac
+		fi
 	done
 done
