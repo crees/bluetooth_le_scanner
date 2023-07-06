@@ -6,6 +6,12 @@ err()
 	kill -USR1 0
 }
 
+dbg()
+{
+
+	[ -n "$debug" ] && echo "$*" 1>&2
+}
+
 cleanup()
 {
 	rm -f "$dbdir"/*_output
@@ -20,6 +26,27 @@ check_deps()
 	done
 
 	err "Missing dependencies; one of : $*"
+}
+
+get_conf_from_dns()
+{
+
+	_dns_src="_btle_scanner.$(hostname -d)"
+	dbg "DNS -> Getting DNS settings from $_dns_src"
+	for var in $(host -t txt $_dns_src | sed 's,^[^"]*",,;s,"[^"]*$,,'); do
+		for v in mqtt_host mqtt_port mqtt_user mqtt_password mqtt_topic bluetooth_scan_duration bluetooth_expiry_time; do
+			if [ "${var%=*}" = "$v" ]; then
+				value=${var#*=}
+				echo $value | grep -q '[^A-Za-z0-9.]' && err "Questionable value in DNS for $var"
+				eval $v="$value"
+				dbg "DNS -> Setting \"$v=$value\""
+			fi
+		done
+		if [ "${var%%=*}" = "nickname" ]; then
+			dbg "DNS -> Found nickname ${var#*=}"
+			nicknames="${nicknames+$nicknames }${var#*=}"
+		fi
+	done
 }
 
 scan_hcitool()
@@ -111,22 +138,44 @@ trap 'cleanup' INT TERM
 check_deps mosquitto_pub
 check_deps bluetoothctl hcitool
 
-while getopts c: opt; do
+while getopts c:dp:n opt; do
 	case $opt in
 	c)
 		config_file="$OPTARG"
 		;;
+	d)
+		debug=yes
+		;;
+	n)
+		dns_conf=yes
+		;;
+	p)
+		if [ "$OPTARG" = "-" ]; then
+			read mqtt_password _junk
+		else
+			mqtt_password="$OPTARG"
+		fi
+		;;
 	?)
-		err "Usage: $0: [-c config_file]\n"
+		err "Usage: $0: [-c config_file|-n] [-p -|password]\n"
 		;;
 	esac
 done
 
-if [ -r "${config_file:=$(pwd)/bluetooth_le_scanner.conf}" ]; then
+if [ -n "$dns_conf" ]; then
+	get_conf_from_dns
+elif [ -r "${config_file:=$(pwd)/bluetooth_le_scanner.conf}" ]; then
 	. "$config_file"
 else
 	err "$config_file either does not exist or is unreadable"
 fi
+
+: ${mqtt_host=localhost}
+: ${mqtt_port=1883}
+: ${mqtt_user=$(hostname -s)}
+: ${mqtt_password=$(cat /etc/bluetooth_le_scanner.mqttpasswd || echo defaultpasswd)}
+: ${mqtt_topic=btlescan/$(hostname)}
+: ${dbdir=/var/db/bluetooth_le_scanner}
 
 if ! [ -r "$dbdir" -a -d "$dbdir" ]; then
 	err "$dbdir does not exist, is not readable or is not a directory"
@@ -144,6 +193,7 @@ done
 cd "$dbdir/addrs"
 
 while :; do
+	[ -n "$dns_conf" ] && get_conf_from_dns
 	timestamp_now=$(date +%s)
 	scan | sort -u | while read mac _junk; do
 		printf %s "$(date +%s)" > "$mac"

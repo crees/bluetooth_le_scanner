@@ -36,8 +36,24 @@ mqtt:
       unique_id: mqtt_myraspberry_sensor_airtag_one
       state_topic: 'btlescan/myraspberry/airtag_one'
       value_template: '{{ value_json.present }}'
-    - name: 'Chris Keys Areion'
+    - name: 'Airtag 2'
       unique_id: mqtt_myraspberry_sensor_airtag_two
       state_topic: 'btlescan/myraspberry/airtag_two'
       value_template: '{{ value_json.present }}'
 ```
+
+# Using DNS for parameters
+
+When you have a few beacon sensors around, having a consistent configuration
+is helpful.  If you control the DNS server for your domain, then you can add
+a record in this form:
+
+```
+_btle_scanner           TXT     "bluetooth_scan_duration=15 bluetooth_expiry_time=60 mqtt_host=my_mqtt_host.example.com nickname=AA:AA:AA:AA:AA:AA=airtag_one nickname=BB:BB:BB:BB:BB:BB=airtag_two"
+```
+
+Run `bluetooth_le_scanner` with the `-n` option (and the `-d` debug option might be helpful
+when setting up) and put the MQTT password into `/etc/bluetooth_le_scanner.mqttpasswd`.
+
+It will rescan the DNS just before each beacon scan.  Obviously the TTL will affect how
+quickly it updates!
