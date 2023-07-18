@@ -15,6 +15,14 @@ bluetooth_scan_duration=15
 # detected in this long.
 bluetooth_expiry_time=60
 
+# Nasty cheap Bluetooth adaptors sometimes stop detecting
+# low energy beacons and need resetting.  This is harmless
+# to do, but you can set this to as many or few seconds
+# as you wish.  Setting it to zero disables resetting the
+# adaptor; some work well with this, some do not.  The
+# default should be safe and effective for all adaptors
+bluetooth_reset_interval=1800
+
 # mqtt details
 mqtt_host=localhost
 mqtt_port=1883

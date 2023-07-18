@@ -49,6 +49,14 @@ get_conf_from_dns()
 	done
 }
 
+reset_bluetooth_htitool()
+{
+
+		hciconfig hci0 down
+		sleep 10
+		hciconfig hci0 up
+}
+
 scan_hcitool()
 {
 	_tries=${1-0}
@@ -62,14 +70,20 @@ scan_hcitool()
 			err "hcitool keeps failing, this is no good"
 		fi
 		echo "hcitool failed, let's try downup" 1>&2
-		hciconfig hci0 down
-		sleep 10
-		hciconfig hci0 up
+		reset_bluetooth_hcitool
 		scan_hcitool $(expr $_tries + 1)
 	else
 		sed -nE 's,^([0-9A-F][0-9A-F]:\S+)\s.*,\1,p' "$dbdir/hcitool_output"
 		rm "$dbdir/hcitool_output"
 	fi
+}
+
+reset_bluetooth_bluetoothctl()
+{
+
+	bluetoothctl power off
+	sleep 10
+	bluetoothctl power on
 }
 
 scan_bluetoothctl()
@@ -82,18 +96,30 @@ scan_bluetoothctl()
 	rm "$dbdir/btctl_output"
 }
 
-scan()
+pick_tool()
 {
 	# All we need is to output a list of BT MAC addresses, line separated
 	# 00:00:00:00:00:00
 	if type bluetoothctl >/dev/null; then
-		scan_bluetoothctl
+		printf %s bluetoothctl
 	elif type hcitool >/dev/null; then
-		scan_hcitool
+		printf %s hcitool
 	else
 		# Should never be reached
 		err "This is a problem-- dependency code clearly faulty"
 	fi
+}
+
+scan()
+{
+
+	scan_$(pick_tool)
+}
+
+reset_bluetooth()
+{
+
+	reset_bluetooth_$(pick_tool)
 }
 
 get_nickname()
@@ -176,6 +202,7 @@ fi
 : ${mqtt_password=$(cat /etc/bluetooth_le_scanner.mqttpasswd || echo defaultpasswd)}
 : ${mqtt_topic=btlescan/$(hostname)}
 : ${dbdir=/var/db/bluetooth_le_scanner}
+: ${bluetooth_reset_interval:=1800}
 
 if ! [ -r "$dbdir" -a -d "$dbdir" ]; then
 	err "$dbdir does not exist, is not readable or is not a directory"
@@ -190,11 +217,22 @@ for nick in $nicknames; do
 	printf %s 0 > "$dbdir/addrs/$mac"
 done
 
+# Every half hour, we'll reset the Bluetooth adaptor.
+# Nasty cheap ones often stop working properly every
+# now and again, and a simple up/down usually fixes them.
+# Reset it on startup, so set last reset time to 1970.
+bt_last_adaptor_reset=0
+
 cd "$dbdir/addrs"
 
 while :; do
 	[ -n "$dns_conf" ] && get_conf_from_dns
 	timestamp_now=$(date +%s)
+	if [ "$bluetooth_reset_interval" -gt 0 -a \
+		"$(($timestamp_now - 1800))" -gt "$bt_last_adaptor_reset" ]; then
+		bt_last_adaptor_reset=$timestamp_now
+		reset_bluetooth
+	fi
 	scan | sort -u | while read mac _junk; do
 		printf %s "$(date +%s)" > "$mac"
 	done
