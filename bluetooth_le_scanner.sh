@@ -14,7 +14,6 @@ dbg()
 
 cleanup()
 {
-	rm -f "$dbdir"/*_output
 	exit ${1-0}
 }
 
@@ -33,6 +32,7 @@ get_conf_from_dns()
 
 	_dns_src="_btle_scanner.$(hostname -d)"
 	dbg "DNS -> Getting DNS settings from $_dns_src"
+	nicknames=""
 	for var in $(host -t txt $_dns_src | sed 's,^[^"]*",,;s,"[^"]*$,,'); do
 		for v in mqtt_host mqtt_port mqtt_user mqtt_password mqtt_topic bluetooth_scan_duration bluetooth_expiry_time; do
 			if [ "${var%=*}" = "$v" ]; then
@@ -44,7 +44,7 @@ get_conf_from_dns()
 		done
 		if [ "${var%%=*}" = "nickname" ]; then
 			dbg "DNS -> Found nickname ${var#*=}"
-			nicknames="${nicknames+$nicknames }${var#*=}"
+			nicknames="${nicknames:+$nicknames }${var#*=}"
 		fi
 	done
 }
@@ -63,7 +63,7 @@ scan_hcitool()
 
 	# HCITool appears to return 124 after SIGINT, so anything
 	# other than that is an error
-	timeout -k 10 -s SIGINT $bluetooth_scan_duration hcitool lescan > "$dbdir/hcitool_output"
+	_hcitool_output=$(timeout -k 10 -s SIGINT $bluetooth_scan_duration hcitool lescan)
 
 	if [ "$?" -ne "124" ]; then
 		if [ "$_tries" -gt 3 ]; then
@@ -73,8 +73,7 @@ scan_hcitool()
 		reset_bluetooth_hcitool
 		scan_hcitool $(expr $_tries + 1)
 	else
-		sed -nE 's,^([0-9A-F][0-9A-F]:\S+)\s.*,\1,p' "$dbdir/hcitool_output"
-		rm "$dbdir/hcitool_output"
+		printf %s "$_hcitool_output" | sed -nE 's,^([0-9A-F][0-9A-F]:\S+)\s.*,\1,p'
 	fi
 }
 
@@ -88,12 +87,12 @@ reset_bluetooth_bluetoothctl()
 
 scan_bluetoothctl()
 {
-	timeout -k 10 -s INT $bluetooth_scan_duration bluetoothctl scan on > "$dbdir/btctl_output"
+
+	_hcitool_output=$(timeout -k 10 -s INT $bluetooth_scan_duration bluetoothctl scan on)
 	if [ "$?" -ne 124 ]; then
 		err "Bluetoothctl failed"
 	fi
-	sed -nE '\,Device,s,[^:]+([0-9A-F][0-9A-F]:\S+)\s.*,\1,p' "$dbdir/btctl_output"
-	rm "$dbdir/btctl_output"
+	printf %s "$_hcitool_output" | sed -nE '\,Device,s,[^:]+([0-9A-F][0-9A-F]:\S+)\s.*,\1,p'
 }
 
 pick_tool()
@@ -204,17 +203,11 @@ fi
 : ${dbdir=/var/db/bluetooth_le_scanner}
 : ${bluetooth_reset_interval:=1800}
 
-if ! [ -r "$dbdir" -a -d "$dbdir" ]; then
-	err "$dbdir does not exist, is not readable or is not a directory"
-fi
-
-mkdir -p "$dbdir/addrs"
-
 # We need to definitely report on nicknamed ones, so
 # pretend they were available before
 for nick in $nicknames; do
 	mac=${nick%=*}
-	printf %s 0 > "$dbdir/addrs/$mac"
+	maclist="${maclist:+$maclist }$mac:0"
 done
 
 # Every half hour, we'll reset the Bluetooth adaptor.
@@ -222,8 +215,6 @@ done
 # now and again, and a simple up/down usually fixes them.
 # Reset it on startup, so set last reset time to 1970.
 bt_last_adaptor_reset=0
-
-cd "$dbdir/addrs"
 
 while :; do
 	[ -n "$dns_conf" ] && get_conf_from_dns
@@ -233,18 +224,33 @@ while :; do
 		bt_last_adaptor_reset=$timestamp_now
 		reset_bluetooth
 	fi
-	scan | sort -u | while read mac _junk; do
-		printf %s "$(date +%s)" > "$mac"
-	done
-	for mac in *; do
-		[ "$mac" = "*" ] && break
-		<$mac read ts
-		hr_date=$(date -d @$ts 2>/dev/null || date -r $ts)
-		if [ "$(expr $timestamp_now - $ts)" -lt "$bluetooth_expiry_time" ]; then
-			publish 1 $mac $ts "$hr_date"
-		else
-			publish 0 $mac $ts "$hr_date"
-			rm $mac
+	tmpmaclist=$(scan | sort -u | while read mac _junk; do
+		printf %s "$mac:$(date +%s) "
+	done)
+	newmaclist="$tmpmaclist"
+	# Check for those that have dropped off
+	for m in $maclist; do
+		_mac=${m%:*}
+		_ts=${m##*:}
+		if [ "${tmpmaclist%${_mac}*}" = "${tmpmaclist}" ]; then
+			# No longer visible, check expired
+			hr_date=$(date -d @$_ts 2>/dev/null || date -r $_ts)
+			if [ "$(expr $timestamp_now - $_ts)" -lt "$bluetooth_expiry_time" ]; then
+				dbg "$_mac disappeared: last seen $hr_date"
+				newmaclist="${newmaclist:+$newmaclist }$m"
+			else
+				dbg "$_mac expired"
+				publish 0 $_mac $_ts "$hr_date"
+			fi
 		fi
 	done
+	# Now we've added on the old ones that haven't expired, publish them all
+	for m in $newmaclist; do
+		_mac=${m%:*}
+		_ts=${m##*:}
+		hr_date=$(date -d @$_ts 2>/dev/null || date -r $_ts)
+		dbg "$_mac visible:     last seen $hr_date"
+		publish 1 $_mac $_ts "$hr_date"
+	done
+	maclist="$newmaclist"
 done

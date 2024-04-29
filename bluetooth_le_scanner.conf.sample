@@ -1,8 +1,5 @@
 # Configuration file for bluetooth_le_scanner
 
-# Where the scanner's persistent data are stored
-dbdir=/var/db/bluetooth_le_scanner
-
 # Duration of Bluetooth scanning in seconds.
 # Longer scans improve detection reliability obviously, but
 # shorter scans mean that the reports are more regular.
