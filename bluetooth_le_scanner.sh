@@ -189,7 +189,7 @@ done
 
 if [ -n "$dns_conf" ]; then
 	get_conf_from_dns
-elif [ -r "${config_file:=$(pwd)/bluetooth_le_scanner.conf}" ]; then
+elif [ -r "${config_file:=/etc/bluetooth_le_scanner.conf}" ]; then
 	. "$config_file"
 else
 	err "$config_file either does not exist or is unreadable"
